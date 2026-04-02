@@ -1,180 +1,140 @@
---[[
-    R² UI Builder
-    Dynamic Rendering Engine with Topbar/Sidebar switching.
---]]
-
+-- R² UI Builder (post/builder.lua)
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
-
--- [[ R² Asset Fetcher & Cacher ]]
--- Downloads web images and converts them to executor-safe assets
-local function fetchAsset(url, filename)
-    -- If the executor doesn't support local assets, return empty
-    if not (isfile and writefile and getcustomasset) then 
-        return "" 
-    end
-
-    local cacheDir = "R2_Assets"
-    local filePath = cacheDir .. "/" .. filename
-
-    if not isfolder(cacheDir) then
-        makefolder(cacheDir)
-    end
-
-    -- Download only if we haven't already cached it
-    if not isfile(filePath) then
-        local success, imgData = pcall(function()
-            return game:HttpGet(url)
-        end)
-        
-        if success and imgData then
-            writefile(filePath, imgData)
-        else
-            return "" -- Download failed
-        end
-    end
-
-    return getcustomasset(filePath)
-end
+local UserInputService = game:GetService("UserInputService")
 
 local Builder = {}
 
-function Builder.render(State, Rnotifd)
-    Rnotifd.push("Builder", "Constructing dynamic DOM...", 2)
+-- 1. GitHub Asset Cacher
+local function fetchAsset(url, filename)
+    if not (isfile and writefile and getcustomasset) then return "" end
+    local path = "R2_Assets/" .. filename
+    if not isfolder("R2_Assets") then makefolder("R2_Assets") end
+    if not isfile(path) then
+        local s, data = pcall(function() return game:HttpGet(url) end)
+        if s and data then writefile(path, data) else return "" end
+    end
+    return getcustomasset(path)
+end
 
-    local window = State.window or { width = 314, height = 180, name = "localfunc.ui", sidebar = false }
-    local colors = State.colors or { 
-        background = Color3.fromRGB(24, 24, 24), 
-        text = Color3.fromRGB(255, 255, 255),
-        border = Color3.fromRGB(89, 89, 89)
-    }
-    local decor = State.decoration or { rounding = 6 }
+function Builder.render(State, Rnotifd)
+    Rnotifd.push("Builder", "Constructing R² DOM...", 2)
+
+    local win = State.window or {width = 314, height = 180, name = "R²", sidebar = false}
+    local col = State.colors or {background = Color3.new(0.1,0.1,0.1), text = Color3.new(1,1,1), border = Color3.new(0.3,0.3,0.3)}
+    local dec = State.decoration or {rounding = 6}
 
     local targetParent = pcall(function() return gethui() end) and gethui() or (pcall(function() return CoreGui end) and CoreGui or Players.LocalPlayer:WaitForChild("PlayerGui"))
 
-    local ScreenGui = Instance.new("ScreenGui")
+    local ScreenGui = Instance.new("ScreenGui", targetParent)
     ScreenGui.Name = "R2_Interface"
-    ScreenGui.ResetOnSpawn = false
-    ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    ScreenGui.Parent = targetParent
 
-    -- MAIN WINDOW
-    local MainFrame = Instance.new("Frame")
-    MainFrame.Name = "R2_Main"
+    -- Base Window
+    local MainFrame = Instance.new("Frame", ScreenGui)
+    MainFrame.BackgroundColor3 = col.background
+    MainFrame.Size = UDim2.new(0, win.width, 0, win.height)
+    MainFrame.Position = UDim2.new(0.5, -(win.width/2), 0.5, -(win.height/2))
     MainFrame.BorderSizePixel = 0
-    MainFrame.BackgroundColor3 = colors.background
-    MainFrame.Size = UDim2.new(0, window.width, 0, window.height)
-    MainFrame.Position = UDim2.new(0.5, -(window.width/2), 0.5, -(window.height/2))
-    MainFrame.Parent = ScreenGui
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, dec.rounding)
+    local ms = Instance.new("UIStroke", MainFrame); ms.Color = col.border; ms.Thickness = 1
 
-    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, decor.rounding)
-    
-    local MainStroke = Instance.new("UIStroke", MainFrame)
-    MainStroke.Color = colors.border
-    MainStroke.Thickness = 1
-
-    -- DYNAMIC HEADER/SIDEBAR
-    local HeaderFrame = Instance.new("Frame")
-    HeaderFrame.Name = "R2_Header"
+    -- Header & Accent
+    local HeaderFrame = Instance.new("Frame", MainFrame)
+    HeaderFrame.BackgroundColor3 = col.background
     HeaderFrame.BorderSizePixel = 0
-    HeaderFrame.BackgroundColor3 = colors.background
-    HeaderFrame.Parent = MainFrame
+    Instance.new("UICorner", HeaderFrame).CornerRadius = UDim.new(0, dec.rounding)
+    local hs = Instance.new("UIStroke", HeaderFrame); hs.Color = col.border; hs.Thickness = 1
 
-    Instance.new("UICorner", HeaderFrame).CornerRadius = UDim.new(0, decor.rounding)
-    
-    local HeaderStroke = Instance.new("UIStroke", HeaderFrame)
-    HeaderStroke.Color = colors.border
-    HeaderStroke.Thickness = 1
+    local AccentFrame = Instance.new("Frame", MainFrame)
+    AccentFrame.BackgroundColor3 = col.background
+    AccentFrame.BorderSizePixel = 0
+    Instance.new("UICorner", AccentFrame).CornerRadius = UDim.new(0, dec.rounding)
+    local as = Instance.new("UIStroke", AccentFrame); as.Color = col.border; as.Thickness = 1
 
-    -- TITLE TEXT
-    local TitleLabel = Instance.new("TextLabel")
-    TitleLabel.Name = "R2_Title"
+    -- Text
+    local TitleLabel = Instance.new("TextLabel", HeaderFrame)
     TitleLabel.BackgroundTransparency = 1
     TitleLabel.Font = Enum.Font.Code
-    TitleLabel.Text = window.name
-    TitleLabel.TextColor3 = colors.text
+    TitleLabel.Text = win.name
+    TitleLabel.TextColor3 = col.text
     TitleLabel.TextSize = 14
-    TitleLabel.AnchorPoint = Vector2.new(0.5, 0.5) -- Anchor center for clean rotation
-    TitleLabel.Parent = HeaderFrame
+    TitleLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+    TitleLabel.ZIndex = 2 -- Keeps text above glass
 
-    -- ACCENT BLOCK
-    local AccentFrame = Instance.new("Frame")
-    AccentFrame.Name = "R2_Accent"
-    AccentFrame.BorderSizePixel = 0
-    AccentFrame.BackgroundColor3 = colors.background
-    AccentFrame.Parent = MainFrame
+    -- 2. Apply Aero Glass
+    local function applyGlass(parent, url, fname)
+        if not url then return end
+        local img = Instance.new("ImageLabel", parent)
+        img.BackgroundTransparency = 1
+        img.Size = UDim2.new(1, 0, 1, 0)
+        img.Image = fetchAsset(url, fname)
+        img.ScaleType = Enum.ScaleType.Stretch
+        img.ImageTransparency = 0.15
+        img.ZIndex = 1
+        Instance.new("UICorner", img).CornerRadius = UDim.new(0, dec.rounding)
+    end
 
-    Instance.new("UICorner", AccentFrame).CornerRadius = UDim.new(0, decor.rounding)
-    
-    local AccentStroke = Instance.new("UIStroke", AccentFrame)
-    AccentStroke.Color = colors.border
-    AccentStroke.Thickness = 1
+    applyGlass(MainFrame, dec.texture_main, "win7_main.png")
+    applyGlass(HeaderFrame, dec.texture_header, "win7_head.png")
+    applyGlass(AccentFrame, dec.texture_accent, "win7_acc.png")
 
-    -- [[ LAYOUT STATE MANAGER ]]
+    -- 3. Window Manager Layout Logic
     local isSidebar = false
-    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
+    local tInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
     local function applyLayout(forceSidebar, animate)
         isSidebar = forceSidebar
-
-        -- Calculate coordinates based on state
-        local headerSize, headerPos
-        local accentSize, accentPos
-        local textRotation, textSize, textPos
+        local hSz, hPos, aSz, aPos, tRot, tSz, tPos
 
         if isSidebar then
-            -- SIDEBAR MODE (Left side, vertical)
-            headerSize = UDim2.new(0, 30, 0, window.height - 40)
-            headerPos = UDim2.new(0, -40, 0, 40)
-            
-            accentSize = UDim2.new(0, 30, 0, 30)
-            accentPos = UDim2.new(0, -40, 0, 0)
-            
-            textRotation = -90
-            textSize = UDim2.new(0, window.height - 40, 0, 30)
-            textPos = UDim2.new(0.5, 0, 0.5, 0)
+            hSz, hPos = UDim2.new(0, 30, 0, win.height - 40), UDim2.new(0, -40, 0, 40)
+            aSz, aPos = UDim2.new(0, 30, 0, 30), UDim2.new(0, -40, 0, 0)
+            tRot, tSz, tPos = -90, UDim2.new(0, win.height - 40, 0, 30), UDim2.new(0.5, 0, 0.5, 0)
         else
-            -- TOPBAR MODE (Original Localmaze layout)
-            headerSize = UDim2.new(0, window.width - 46, 0, 28)
-            headerPos = UDim2.new(0, 46, 0, -38)
-            
-            accentSize = UDim2.new(0, 40, 0, 30)
-            accentPos = UDim2.new(0, 0, 0, -40)
-            
-            textRotation = 0
-            textSize = UDim2.new(1, -20, 1, 0)
-            textPos = UDim2.new(0.5, 0, 0.5, 0)
+            hSz, hPos = UDim2.new(0, win.width - 46, 0, 28), UDim2.new(0, 46, 0, -38)
+            aSz, aPos = UDim2.new(0, 40, 0, 30), UDim2.new(0, 0, 0, -40)
+            tRot, tSz, tPos = 0, UDim2.new(1, -20, 1, 0), UDim2.new(0.5, 0, 0.5, 0)
         end
 
         if animate then
-            TweenService:Create(HeaderFrame, tweenInfo, {Size = headerSize, Position = headerPos}):Play()
-            TweenService:Create(AccentFrame, tweenInfo, {Size = accentSize, Position = accentPos}):Play()
-            TweenService:Create(TitleLabel, tweenInfo, {Rotation = textRotation, Size = textSize, Position = textPos}):Play()
+            TweenService:Create(HeaderFrame, tInfo, {Size = hSz, Position = hPos}):Play()
+            TweenService:Create(AccentFrame, tInfo, {Size = aSz, Position = aPos}):Play()
+            TweenService:Create(TitleLabel, tInfo, {Rotation = tRot, Size = tSz, Position = tPos}):Play()
         else
-            HeaderFrame.Size = headerSize
-            HeaderFrame.Position = headerPos
-            AccentFrame.Size = accentSize
-            AccentFrame.Position = accentPos
-            TitleLabel.Rotation = textRotation
-            TitleLabel.Size = textSize
-            TitleLabel.Position = textPos
+            HeaderFrame.Size, HeaderFrame.Position = hSz, hPos
+            AccentFrame.Size, AccentFrame.Position = aSz, aPos
+            TitleLabel.Rotation, TitleLabel.Size, TitleLabel.Position = tRot, tSz, tPos
         end
     end
 
-    -- Apply initial layout based on c⁴ config (no animation on first load)
-    applyLayout(window.sidebar, false)
+    -- 4. Dragging Logic
+    local function makeDraggable(gui, handle)
+        local dragging, dragStart, startPos = false, nil, nil
+        handle.InputBegan:Connect(function(inp)
+            if inp.UserInputType == Enum.UserInputType.MouseButton1 then
+                dragging, dragStart, startPos = true, inp.Position, gui.Position
+                inp.Changed:Connect(function() if inp.UserInputState == Enum.UserInputState.End then dragging = false end end)
+            end
+        end)
+        UserInputService.InputChanged:Connect(function(inp)
+            if dragging and inp.UserInputType == Enum.UserInputType.MouseMovement then
+                local delta = inp.Position - dragStart
+                gui.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+            end
+        end)
+    end
 
-    Rnotifd.push("R² READY", "UI rendered. Layout state: " .. (window.sidebar and "Sidebar" or "Topbar"), 3)
+    makeDraggable(MainFrame, HeaderFrame)
+    makeDraggable(MainFrame, AccentFrame)
 
-    -- [[ EXPORTED API ]]
-    -- Return the GUI and the layout toggle function so other scripts can bind it to a button
+    applyLayout(win.sidebar, false)
+    Rnotifd.push("R² SECURE", "Engine running.", 3)
+
     return {
         Gui = ScreenGui,
         Main = MainFrame,
-        toggleLayout = function()
-            applyLayout(not isSidebar, true)
-        end
+        toggleLayout = function() applyLayout(not isSidebar, true) end
     }
 end
 
