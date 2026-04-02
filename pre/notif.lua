@@ -1,114 +1,121 @@
--- R² Notification Daemon (Mako-style)
+--[[
+    R² Vanguard (pre-all/notif.lua)
+    Mako-style notification daemon - PATCHED
+--]]
+
 local TweenService = game:GetService("TweenService")
-local CoreGui = game:GetService("CoreGui")
+local Players = game:GetService("Players")
 
--- Safely get a hidden GUI container (fallback to PlayerGui if strictly sandboxed)
-local targetParent = pcall(function() return CoreGui end) and CoreGui or game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
+-- Safely resolve GUI Parent (Fixes the Line 4 nil issue on fast injection)
+local targetParent
+if type(gethui) == "function" then
+    targetParent = gethui()
+else
+    local success, core = pcall(function() return game:GetService("CoreGui") end)
+    if success and core then
+        targetParent = core
+    else
+        local lp = Players.LocalPlayer
+        while not lp do
+            task.wait(0.1) -- Safely wait for the game to load the player
+            lp = Players.LocalPlayer
+        end
+        targetParent = lp:WaitForChild("PlayerGui")
+    end
+end
 
-local NotifContainer = Instance.new("ScreenGui")
-NotifContainer.Name = "R2_MakoDaemon"
-NotifContainer.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-NotifContainer.Parent = targetParent
+-- Container for notifications
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "R2_Vanguard"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.DisplayOrder = 999
+ScreenGui.Parent = targetParent
 
-local Mako = {}
-Mako.ActiveNotifs = {} -- Keeps track of active notifications for Mako-style stacking
+local Notif = {}
+local ActiveNotifications = {}
 
--- Default Mako-esque Theme (Minimalist, readable)
-Mako.DefaultTheme = {
-    bg = Color3.fromRGB(24, 24, 24),     -- Deep monochrome gray
-    text = Color3.fromRGB(255, 255, 255),
-    border = Color3.fromRGB(89, 89, 89), -- Subtle inactive border
-    rounding = 6,                        -- Slight corner rounding
-    width = 280,
-    font = Enum.Font.Code                -- Monospace for that terminal feel
+-- Standard R² Monochrome Theme
+local Theme = {
+    Background = Color3.fromRGB(20, 20, 20),
+    Accent = Color3.fromRGB(255, 255, 255),
+    Text = Color3.fromRGB(230, 230, 230),
+    Font = Enum.Font.Code,
+    Rounding = 4
 }
 
-function Mako.send(title, message, duration, customTheme)
+function Notif.push(title, content, duration)
+    title = title or "R² SYSTEM"
+    content = content or ""
     duration = duration or 3
-    local theme = customTheme or Mako.DefaultTheme
 
-    -- 1. Create the Notification Frame
-    local frame = Instance.new("Frame")
-    frame.Size = UDim2.new(0, theme.width, 0, 60)
-    frame.Position = UDim2.new(0.5, -(theme.width/2), 0, -80) -- Start hidden above screen
-    frame.BackgroundColor3 = theme.bg
-    frame.BorderSizePixel = 0
-    frame.Parent = NotifContainer
+    local Frame = Instance.new("Frame")
+    Frame.Size = UDim2.new(0, 260, 0, 50)
+    Frame.Position = UDim2.new(0.5, -130, 0, -60)
+    Frame.BackgroundColor3 = Theme.Background
+    Frame.BorderSizePixel = 0
+    Frame.Parent = ScreenGui
 
-    local corner = Instance.new("UICorner")
-    corner.CornerRadius = UDim.new(0, theme.rounding)
-    corner.Parent = frame
+    local Corner = Instance.new("UICorner")
+    Corner.CornerRadius = UDim.new(0, Theme.Rounding)
+    Corner.Parent = Frame
 
-    local stroke = Instance.new("UIStroke")
-    stroke.Color = theme.border
-    stroke.Thickness = 1
-    stroke.Parent = frame
+    local Stroke = Instance.new("UIStroke")
+    Stroke.Color = Theme.Accent
+    Stroke.Transparency = 0.8
+    Stroke.Thickness = 1
+    Stroke.Parent = Frame
 
-    -- 2. Title Label
-    local titleLbl = Instance.new("TextLabel")
-    titleLbl.Size = UDim2.new(1, -20, 0, 20)
-    titleLbl.Position = UDim2.new(0, 10, 0, 8)
-    titleLbl.BackgroundTransparency = 1
-    titleLbl.Font = theme.font
-    titleLbl.Text = title
-    titleLbl.TextColor3 = theme.text
-    titleLbl.TextSize = 14
-    titleLbl.Font = Enum.Font.GothamBold -- Force bold for title
-    titleLbl.TextXAlignment = Enum.TextXAlignment.Left
-    titleLbl.Parent = frame
+    local TitleLabel = Instance.new("TextLabel")
+    TitleLabel.Size = UDim2.new(1, -20, 0, 20)
+    TitleLabel.Position = UDim2.new(0, 10, 0, 5)
+    TitleLabel.BackgroundTransparency = 1
+    TitleLabel.Font = Theme.Font
+    TitleLabel.Text = title:upper()
+    TitleLabel.TextColor3 = Theme.Accent
+    TitleLabel.TextSize = 14
+    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.Parent = Frame
 
-    -- 3. Message Label
-    local msgLbl = Instance.new("TextLabel")
-    msgLbl.Size = UDim2.new(1, -20, 0, 20)
-    msgLbl.Position = UDim2.new(0, 10, 0, 30)
-    msgLbl.BackgroundTransparency = 1
-    msgLbl.Font = theme.font
-    msgLbl.Text = message
-    msgLbl.TextColor3 = theme.text
-    msgLbl.TextSize = 13
-    msgLbl.TextXAlignment = Enum.TextXAlignment.Left
-    msgLbl.TextTransparency = 0.2 -- Slight dim for body text
-    msgLbl.Parent = frame
+    local ContentLabel = Instance.new("TextLabel")
+    ContentLabel.Size = UDim2.new(1, -20, 0, 20)
+    ContentLabel.Position = UDim2.new(0, 10, 0, 25)
+    ContentLabel.BackgroundTransparency = 1
+    ContentLabel.Font = Theme.Font
+    ContentLabel.Text = content
+    ContentLabel.TextColor3 = Theme.Text
+    ContentLabel.TextSize = 12
+    ContentLabel.TextXAlignment = Enum.TextXAlignment.Left
+    ContentLabel.Parent = Frame
 
-    -- 4. Calculate Stacking Position
-    local stackIndex = #Mako.ActiveNotifs
-    table.insert(Mako.ActiveNotifs, frame)
-    local targetY = 20 + (stackIndex * 70) -- 20px padding from top, 70px per notification
+    -- Stacking Logic
+    table.insert(ActiveNotifications, Frame)
+    local targetY = 20 + ((#ActiveNotifications - 1) * 60)
 
-    -- 5. Tween In (The Drop)
-    local tweenIn = TweenService:Create(frame, TweenInfo.new(0.4, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-        Position = UDim2.new(0.5, -(theme.width/2), 0, targetY)
-    })
-    tweenIn:Play()
+    -- Animate In
+    TweenService:Create(Frame, TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
+        Position = UDim2.new(0.5, -130, 0, targetY)
+    }):Play()
 
-    -- 6. TTL (Time To Live) and Cleanup
+    -- Auto-Cleanup
     task.delay(duration, function()
-        -- Slide back up and fade out
-        local tweenOut = TweenService:Create(frame, TweenInfo.new(0.3, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
-            Position = UDim2.new(0.5, -(theme.width/2), 0, -80),
+        local outTween = TweenService:Create(Frame, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.In), {
+            Position = UDim2.new(0.5, -130, 0, -70),
             BackgroundTransparency = 1
         })
         
-        -- Fade text and stroke
-        TweenService:Create(titleLbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-        TweenService:Create(msgLbl, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
-        TweenService:Create(stroke, TweenInfo.new(0.2), {Transparency = 1}):Play()
-
-        tweenOut:Play()
-        tweenOut.Completed:Wait()
+        outTween:Play()
+        outTween.Completed:Wait()
         
-        -- Remove from stack and destroy
-        table.remove(Mako.ActiveNotifs, table.find(Mako.ActiveNotifs, frame))
-        frame:Destroy()
+        table.remove(ActiveNotifications, table.find(ActiveNotifications, Frame))
+        Frame:Destroy()
 
-        -- Shift remaining notifications up
-        for i, activeFrame in ipairs(Mako.ActiveNotifs) do
-            local newY = 20 + ((i - 1) * 70)
-            TweenService:Create(activeFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {
-                Position = UDim2.new(0.5, -(theme.width/2), 0, newY)
+        -- Shift others up
+        for i, otherFrame in ipairs(ActiveNotifications) do
+            TweenService:Create(otherFrame, TweenInfo.new(0.3, Enum.EasingStyle.Quart), {
+                Position = UDim2.new(0.5, -130, 0, 20 + ((i - 1) * 60))
             }):Play()
         end
     end)
 end
 
-return Mako
+return Notif
