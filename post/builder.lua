@@ -7,6 +7,37 @@ local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 
+-- [[ R² Asset Fetcher & Cacher ]]
+-- Downloads web images and converts them to executor-safe assets
+local function fetchAsset(url, filename)
+    -- If the executor doesn't support local assets, return empty
+    if not (isfile and writefile and getcustomasset) then 
+        return "" 
+    end
+
+    local cacheDir = "R2_Assets"
+    local filePath = cacheDir .. "/" .. filename
+
+    if not isfolder(cacheDir) then
+        makefolder(cacheDir)
+    end
+
+    -- Download only if we haven't already cached it
+    if not isfile(filePath) then
+        local success, imgData = pcall(function()
+            return game:HttpGet(url)
+        end)
+        
+        if success and imgData then
+            writefile(filePath, imgData)
+        else
+            return "" -- Download failed
+        end
+    end
+
+    return getcustomasset(filePath)
+end
+
 local Builder = {}
 
 function Builder.render(State, Rnotifd)
