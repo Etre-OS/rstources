@@ -1,5 +1,17 @@
-local TweenService, UserInputService = game:GetService("TweenService"), game:GetService("UserInputService")
+-- R² Content Toolkit (win/content.lua)
+-- Features: Full-element hitboxes, ezclbk stability, and Mobile Activated support
+
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 local Toolkit = {}
+
+-- [[ The ezclbk System ]]
+-- Safely fires callbacks on a separate thread so errors don't freeze the UI
+local function ezclbk(cb, ...)
+    if type(cb) == "function" then
+        task.spawn(cb, ...)
+    end
+end
 
 function Toolkit.init(Container, State)
     local col = State.colors or {background=Color3.new(0.1,0.1,0.1), text=Color3.new(1,1,1), border=Color3.new(0.3,0.3,0.3)}
@@ -26,25 +38,28 @@ function Toolkit.init(Container, State)
         end
 
         function TabAPI:CreateButton(text, callback)
+            -- Hitbox is the entire row
             local btn = Instance.new("TextButton", TabFrame)
             btn.Size, btn.BackgroundColor3, btn.BackgroundTransparency, btn.Text, btn.Font, btn.TextColor3 = UDim2.new(1, 0, 0, 28), col.background, dec.opacity, text, Enum.Font.Code, col.text
+            btn.AutoButtonColor = false -- We handle our own animations
             Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
             local bs = Instance.new("UIStroke", btn); bs.Color = col.border; bs.Thickness = 1
 
-            -- Mobile fix: Activated works for Mouse AND Touch natively
             btn.Activated:Connect(function()
                 TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = 0.8}):Play()
                 task.wait(0.1)
                 TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundTransparency = dec.opacity}):Play()
-                pcall(callback)
+                ezclbk(callback) -- Integrated ezclbk
             end)
         end
 
         function TabAPI:CreateToggle(text, default, callback)
             local state = default or false
+            -- Hitbox is the entire row
             local tog = Instance.new("TextButton", TabFrame)
             tog.Size, tog.BackgroundColor3, tog.BackgroundTransparency, tog.Font, tog.TextXAlignment = UDim2.new(1, 0, 0, 28), col.background, dec.opacity, Enum.Font.Code, Enum.TextXAlignment.Left
             tog.Text, tog.TextColor3 = text .. " : " .. tostring(state), state and Color3.new(0, 1, 0.5) or col.text
+            tog.AutoButtonColor = false
             Instance.new("UIPadding", tog).PaddingLeft, Instance.new("UICorner", tog).CornerRadius = UDim.new(0, 8), UDim.new(0, 4)
             local ts = Instance.new("UIStroke", tog); ts.Color = col.border; ts.Thickness = 1
 
@@ -52,37 +67,62 @@ function Toolkit.init(Container, State)
                 state = not state
                 tog.Text = text .. " : " .. tostring(state)
                 TweenService:Create(tog, TweenInfo.new(0.2), {TextColor3 = state and Color3.new(0, 1, 0.5) or col.text}):Play()
-                pcall(callback, state)
+                ezclbk(callback, state) -- Integrated ezclbk
             end)
         end
 
         function TabAPI:CreateSlider(text, min, max, default, callback)
             local val = default or min
-            local sCont = Instance.new("Frame", TabFrame); sCont.Size, sCont.BackgroundTransparency = UDim2.new(1, 0, 0, 40), 1
-            local Txt = Instance.new("TextLabel", sCont); Txt.Size, Txt.BackgroundTransparency, Txt.Text, Txt.Font, Txt.TextColor3, Txt.TextXAlignment = UDim2.new(1, 0, 0, 16), 1, text .. " : " .. tostring(val), Enum.Font.Code, col.text, Enum.TextXAlignment.Left
-            local Track = Instance.new("TextButton", sCont); Track.Size, Track.Position, Track.BackgroundColor3, Track.BackgroundTransparency, Track.Text = UDim2.new(1, 0, 0, 14), UDim2.new(0, 0, 0, 20), col.background, dec.opacity, ""
+            
+            -- FIX: The entire 40px tall container is now the interactable button (Full Hitbox)
+            local Hitbox = Instance.new("TextButton", TabFrame)
+            Hitbox.Size, Hitbox.BackgroundTransparency, Hitbox.Text = UDim2.new(1, 0, 0, 40), 1, ""
+            Hitbox.AutoButtonColor = false
+
+            local Txt = Instance.new("TextLabel", Hitbox)
+            Txt.Size, Txt.BackgroundTransparency, Txt.Text, Txt.Font, Txt.TextColor3, Txt.TextXAlignment = UDim2.new(1, 0, 0, 16), 1, text .. " : " .. tostring(val), Enum.Font.Code, col.text, Enum.TextXAlignment.Left
+            
+            -- The visual track is now just a Frame, not a button
+            local Track = Instance.new("Frame", Hitbox)
+            Track.Size, Track.Position, Track.BackgroundColor3, Track.BackgroundTransparency = UDim2.new(1, 0, 0, 14), UDim2.new(0, 0, 0, 20), col.background, dec.opacity
             Instance.new("UICorner", Track).CornerRadius = UDim.new(0, 4)
             local trks = Instance.new("UIStroke", Track); trks.Color = col.border; trks.Thickness = 1
-            local Fill = Instance.new("Frame", Track); Fill.BackgroundColor3, Fill.BackgroundTransparency, Fill.Size = col.text, 0.5, UDim2.new((val - min)/(max - min), 0, 1, 0)
+            
+            local Fill = Instance.new("Frame", Track)
+            Fill.BackgroundColor3, Fill.BackgroundTransparency, Fill.Size = col.text, 0.5, UDim2.new((val - min)/(max - min), 0, 1, 0)
             Instance.new("UICorner", Fill).CornerRadius = UDim.new(0, 4)
 
             local dragging = false
             local function updateSlider(inp)
+                -- We calculate the math relative to the Track's position, but it triggers anywhere in the Hitbox
                 local pos = math.clamp((inp.Position.X - Track.AbsolutePosition.X) / Track.AbsoluteSize.X, 0, 1)
                 val = math.floor(min + ((max - min) * pos))
                 Txt.Text = text .. " : " .. tostring(val)
                 TweenService:Create(Fill, TweenInfo.new(0.1), {Size = UDim2.new(pos, 0, 1, 0)}):Play()
-                pcall(callback, val)
+                ezclbk(callback, val) -- Integrated ezclbk
             end
 
-            -- Mobile Touch Support added here
-            Track.InputBegan:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then dragging = true; updateSlider(inp) end end)
-            UserInputService.InputEnded:Connect(function(inp) if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then dragging = false end end)
-            UserInputService.InputChanged:Connect(function(inp) if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then updateSlider(inp) end end)
+            -- Input logic bound to the giant Hitbox wrapper
+            Hitbox.InputBegan:Connect(function(inp) 
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then 
+                    dragging = true; updateSlider(inp) 
+                end 
+            end)
+            UserInputService.InputEnded:Connect(function(inp) 
+                if inp.UserInputType == Enum.UserInputType.MouseButton1 or inp.UserInputType == Enum.UserInputType.Touch then 
+                    dragging = false 
+                end 
+            end)
+            UserInputService.InputChanged:Connect(function(inp) 
+                if dragging and (inp.UserInputType == Enum.UserInputType.MouseMovement or inp.UserInputType == Enum.UserInputType.Touch) then 
+                    updateSlider(inp) 
+                end 
+            end)
         end
         return TabAPI
     end
-    GUI_API.ToggleLayout = function() Container.Parent.Parent:FindFirstChild("R2_Header").Size = Container.Parent.Parent:FindFirstChild("R2_Header").Size end -- Handled via comp return usually, but included in API stub
+    
+    GUI_API.ToggleLayout = function() Container.Parent.Parent:FindFirstChild("R2_Header").Size = Container.Parent.Parent:FindFirstChild("R2_Header").Size end 
     return GUI_API
 end
 return Toolkit
