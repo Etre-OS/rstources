@@ -1,115 +1,149 @@
 --[[
-    R² UI Builder (post/builder.lua)
-    Maps c⁴ State variables dynamically to the UI instances.
+    R² UI Builder
+    Dynamic Rendering Engine with Topbar/Sidebar switching.
 --]]
 
 local CoreGui = game:GetService("CoreGui")
 local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local Builder = {}
 
 function Builder.render(State, Rnotifd)
-    Rnotifd.push("Builder", "Mapping c⁴ variables to UI...", 2)
+    Rnotifd.push("Builder", "Constructing dynamic DOM...", 2)
 
-    -- 1. Safely extract state with fallbacks (in case of total failure)
-    local window = State.window or { width = 314, height = 180, name = "R² fallback" }
+    local window = State.window or { width = 314, height = 180, name = "localfunc.ui", sidebar = false }
     local colors = State.colors or { 
-        background = Color3.fromRGB(255, 255, 255), 
-        text = Color3.fromRGB(0, 0, 0),
-        border = Color3.fromRGB(200, 200, 200)
+        background = Color3.fromRGB(24, 24, 24), 
+        text = Color3.fromRGB(255, 255, 255),
+        border = Color3.fromRGB(89, 89, 89)
     }
     local decor = State.decoration or { rounding = 6 }
 
-    -- 2. Resolve target parent (stealth injection)
-    local targetParent
-    if type(gethui) == "function" then
-        targetParent = gethui()
-    else
-        local success, core = pcall(function() return CoreGui end)
-        targetParent = success and core or Players.LocalPlayer:WaitForChild("PlayerGui")
-    end
+    local targetParent = pcall(function() return gethui() end) and gethui() or (pcall(function() return CoreGui end) and CoreGui or Players.LocalPlayer:WaitForChild("PlayerGui"))
 
-    -- 3. Build the Hierarchy
     local ScreenGui = Instance.new("ScreenGui")
     ScreenGui.Name = "R2_Interface"
     ScreenGui.ResetOnSpawn = false
     ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
     ScreenGui.Parent = targetParent
 
-    -- MAIN WINDOW FRAME
+    -- MAIN WINDOW
     local MainFrame = Instance.new("Frame")
     MainFrame.Name = "R2_Main"
     MainFrame.BorderSizePixel = 0
     MainFrame.BackgroundColor3 = colors.background
-    -- Dynamically apply c⁴ width and height
     MainFrame.Size = UDim2.new(0, window.width, 0, window.height)
-    MainFrame.Position = UDim2.new(0, 258, 0, 88) -- We'll add dragging logic here later
+    MainFrame.Position = UDim2.new(0.5, -(window.width/2), 0.5, -(window.height/2))
     MainFrame.Parent = ScreenGui
 
-    local MainCorner = Instance.new("UICorner")
-    MainCorner.CornerRadius = UDim.new(0, decor.rounding) -- Apply c⁴ rounding
-    MainCorner.Parent = MainFrame
-
-    local MainStroke = Instance.new("UIStroke")
-    MainStroke.Color = colors.border -- Apply c⁴ border color
+    Instance.new("UICorner", MainFrame).CornerRadius = UDim.new(0, decor.rounding)
+    
+    local MainStroke = Instance.new("UIStroke", MainFrame)
+    MainStroke.Color = colors.border
     MainStroke.Thickness = 1
-    MainStroke.Parent = MainFrame
 
-    -- HEADER / TITLE BAR (Floating offset design from Localmaze)
+    -- DYNAMIC HEADER/SIDEBAR
     local HeaderFrame = Instance.new("Frame")
     HeaderFrame.Name = "R2_Header"
     HeaderFrame.BorderSizePixel = 0
     HeaderFrame.BackgroundColor3 = colors.background
-    HeaderFrame.Size = UDim2.new(0, window.width - 42, 0, 28)
-    HeaderFrame.Position = UDim2.new(0, 44, 0, -38)
     HeaderFrame.Parent = MainFrame
 
-    local HeaderCorner = Instance.new("UICorner")
-    HeaderCorner.CornerRadius = UDim.new(0, decor.rounding)
-    HeaderCorner.Parent = HeaderFrame
-
-    local HeaderStroke = Instance.new("UIStroke")
+    Instance.new("UICorner", HeaderFrame).CornerRadius = UDim.new(0, decor.rounding)
+    
+    local HeaderStroke = Instance.new("UIStroke", HeaderFrame)
     HeaderStroke.Color = colors.border
     HeaderStroke.Thickness = 1
-    HeaderStroke.Parent = HeaderFrame
 
     -- TITLE TEXT
     local TitleLabel = Instance.new("TextLabel")
     TitleLabel.Name = "R2_Title"
     TitleLabel.BackgroundTransparency = 1
-    TitleLabel.Size = UDim2.new(1, -20, 1, 0)
-    TitleLabel.Position = UDim2.new(0, 10, 0, 0)
-    TitleLabel.Font = Enum.Font.Code -- Monospace for the Unix aesthetic
-    TitleLabel.Text = window.name -- Apply c⁴ window name
-    TitleLabel.TextColor3 = colors.text -- Apply c⁴ text color
+    TitleLabel.Font = Enum.Font.Code
+    TitleLabel.Text = window.name
+    TitleLabel.TextColor3 = colors.text
     TitleLabel.TextSize = 14
-    TitleLabel.TextXAlignment = Enum.TextXAlignment.Left
+    TitleLabel.AnchorPoint = Vector2.new(0.5, 0.5) -- Anchor center for clean rotation
     TitleLabel.Parent = HeaderFrame
 
-    -- DECORATIVE ACCENT BLOCK (Left of the floating header)
+    -- ACCENT BLOCK
     local AccentFrame = Instance.new("Frame")
     AccentFrame.Name = "R2_Accent"
     AccentFrame.BorderSizePixel = 0
     AccentFrame.BackgroundColor3 = colors.background
-    AccentFrame.Size = UDim2.new(0, 40, 0, 30)
-    AccentFrame.Position = UDim2.new(0, -46, 0, -2)
-    AccentFrame.Parent = HeaderFrame
+    AccentFrame.Parent = MainFrame
 
-    local AccentCorner = Instance.new("UICorner")
-    AccentCorner.CornerRadius = UDim.new(0, decor.rounding)
-    AccentCorner.Parent = AccentFrame
-
-    local AccentStroke = Instance.new("UIStroke")
+    Instance.new("UICorner", AccentFrame).CornerRadius = UDim.new(0, decor.rounding)
+    
+    local AccentStroke = Instance.new("UIStroke", AccentFrame)
     AccentStroke.Color = colors.border
     AccentStroke.Thickness = 1
-    AccentStroke.Parent = AccentFrame
 
-    Rnotifd.push("R² READY", "UI rendered using c⁴ theme constraints.", 3)
+    -- [[ LAYOUT STATE MANAGER ]]
+    local isSidebar = false
+    local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quart, Enum.EasingDirection.Out)
 
+    local function applyLayout(forceSidebar, animate)
+        isSidebar = forceSidebar
+
+        -- Calculate coordinates based on state
+        local headerSize, headerPos
+        local accentSize, accentPos
+        local textRotation, textSize, textPos
+
+        if isSidebar then
+            -- SIDEBAR MODE (Left side, vertical)
+            headerSize = UDim2.new(0, 30, 0, window.height - 40)
+            headerPos = UDim2.new(0, -40, 0, 40)
+            
+            accentSize = UDim2.new(0, 30, 0, 30)
+            accentPos = UDim2.new(0, -40, 0, 0)
+            
+            textRotation = -90
+            textSize = UDim2.new(0, window.height - 40, 0, 30)
+            textPos = UDim2.new(0.5, 0, 0.5, 0)
+        else
+            -- TOPBAR MODE (Original Localmaze layout)
+            headerSize = UDim2.new(0, window.width - 46, 0, 28)
+            headerPos = UDim2.new(0, 46, 0, -38)
+            
+            accentSize = UDim2.new(0, 40, 0, 30)
+            accentPos = UDim2.new(0, 0, 0, -40)
+            
+            textRotation = 0
+            textSize = UDim2.new(1, -20, 1, 0)
+            textPos = UDim2.new(0.5, 0, 0.5, 0)
+        end
+
+        if animate then
+            TweenService:Create(HeaderFrame, tweenInfo, {Size = headerSize, Position = headerPos}):Play()
+            TweenService:Create(AccentFrame, tweenInfo, {Size = accentSize, Position = accentPos}):Play()
+            TweenService:Create(TitleLabel, tweenInfo, {Rotation = textRotation, Size = textSize, Position = textPos}):Play()
+        else
+            HeaderFrame.Size = headerSize
+            HeaderFrame.Position = headerPos
+            AccentFrame.Size = accentSize
+            AccentFrame.Position = accentPos
+            TitleLabel.Rotation = textRotation
+            TitleLabel.Size = textSize
+            TitleLabel.Position = textPos
+        end
+    end
+
+    -- Apply initial layout based on c⁴ config (no animation on first load)
+    applyLayout(window.sidebar, false)
+
+    Rnotifd.push("R² READY", "UI rendered. Layout state: " .. (window.sidebar and "Sidebar" or "Topbar"), 3)
+
+    -- [[ EXPORTED API ]]
+    -- Return the GUI and the layout toggle function so other scripts can bind it to a button
     return {
-        ScreenGui = ScreenGui,
-        MainFrame = MainFrame,
-        HeaderFrame = HeaderFrame
+        Gui = ScreenGui,
+        Main = MainFrame,
+        toggleLayout = function()
+            applyLayout(not isSidebar, true)
+        end
     }
 end
 
